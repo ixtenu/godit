@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/nsf/termbox-go"
-	"github.com/nsf/tulib"
 	"os"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/nsf/termbox-go"
+	"github.com/nsf/tulib"
 )
 
 //----------------------------------------------------------------------------
@@ -258,7 +259,7 @@ func (v *view) draw_line(line *line, line_num, coff, line_voffset int) {
 		}
 
 		if x == tabstop {
-			tabstop += tabstop_length
+			tabstop += opt.tabstop_length
 		}
 
 		if rx >= v.uibuf.Width {
@@ -860,6 +861,12 @@ func (v *view) insert_rune(r rune) {
 				c.boffset += len(autoindent)
 			}
 		}
+	} else if opt.expand_tabs && r == '\t' {
+		// Insert spaces up to the next tab stop.
+		count := opt.tabstop_length - v.cursor_voffset%opt.tabstop_length
+		spaces := strings.Repeat(" ", count)
+		v.action_insert(c, []byte(spaces))
+		c.boffset += count
 	} else {
 		v.action_insert(c, data[:l])
 		c.boffset += l
@@ -887,10 +894,22 @@ func (v *view) delete_rune_backward() {
 		return
 	}
 
-	_, rlen := c.rune_before()
-	c.boffset -= rlen
-	v.action_delete(c, rlen)
-	v.move_cursor_to(c)
+	for {
+		r, rlen := c.rune_before()
+		c.boffset -= rlen
+		v.action_delete(c, rlen)
+		v.move_cursor_to(c)
+
+		// Smart backspace for tab expansion.
+		if opt.expand_tabs && r == ' ' && !c.bol() {
+			pr, _ := c.rune_before()
+			if pr == ' ' && v.cursor_voffset%opt.tabstop_length != 0 {
+				continue
+			}
+		}
+
+		break
+	}
 	v.dirty = dirty_everything
 }
 
@@ -1517,23 +1536,45 @@ func (v *view) line_region() (beg, end cursor_location) {
 
 func (v *view) indent_line(line cursor_location) {
 	line.boffset = 0
-	v.action_insert(line, []byte{'\t'})
+	var inserted int
+	if opt.expand_tabs {
+		inserted = opt.tabstop_length
+		spaces := strings.Repeat(" ", inserted)
+		v.action_insert(line, []byte(spaces))
+	} else {
+		inserted = 1
+		v.action_insert(line, []byte{'\t'})
+	}
 	if v.cursor.line == line.line {
 		cursor := v.cursor
-		cursor.boffset += 1
+		cursor.boffset += inserted
 		v.move_cursor_to(cursor)
 	}
 }
 
 func (v *view) deindent_line(line cursor_location) {
 	line.boffset = 0
-	if r, _ := line.rune_under(); r == '\t' {
-		v.action_delete(line, 1)
-		if v.cursor.line == line.line && v.cursor.boffset > 0 {
-			cursor := v.cursor
-			cursor.boffset -= 1
-			v.move_cursor_to(cursor)
+	deleted := 0
+	if opt.expand_tabs {
+		for deleted < opt.tabstop_length {
+			r, _ := line.rune_under()
+			if r == ' ' {
+				deleted++
+			} else if r == '\t' {
+				deleted = opt.tabstop_length
+			} else {
+				break
+			}
+			v.action_delete(line, 1)
 		}
+	} else if r, _ := line.rune_under(); r == '\t' {
+		deleted = 1
+		v.action_delete(line, 1)
+	}
+	if deleted > 0 && v.cursor.line == line.line && v.cursor.boffset > 0 {
+		cursor := v.cursor
+		cursor.boffset -= deleted
+		v.move_cursor_to(cursor)
 	}
 }
 

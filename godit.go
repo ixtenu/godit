@@ -2,20 +2,28 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
-	"github.com/nsf/termbox-go"
-	"github.com/nsf/tulib"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
+
+	"github.com/nsf/termbox-go"
+	"github.com/nsf/tulib"
 )
 
 const (
-	tabstop_length            = 8
 	view_vertical_threshold   = 5
 	view_horizontal_threshold = 10
 )
+
+type godit_options struct {
+	tabstop_length int
+	expand_tabs    bool
+}
+
+var opt godit_options
 
 // this is a structure which represents a key press, used for keyboard macros
 type key_event struct {
@@ -723,7 +731,20 @@ func (g *godit) has_unsaved_buffers() bool {
 	return false
 }
 
+func getOptions() godit_options {
+	tw := flag.Int("t", 8, "tab stop width")
+	et := flag.Bool("e", false, "expand tabs to spaces")
+	flag.Parse()
+	if *tw < 1 || *tw > 8 {
+		fmt.Fprintln(os.Stderr, "error: tab stop width must be between 1 and 8")
+		os.Exit(1)
+	}
+	return godit_options{tabstop_length: *tw, expand_tabs: *et}
+}
+
 func main() {
+	opt = getOptions()
+
 	err := termbox.Init()
 	if err != nil {
 		panic(err)
@@ -731,7 +752,7 @@ func main() {
 	defer termbox.Close()
 	termbox.SetInputMode(termbox.InputAlt)
 
-	godit := new_godit(os.Args[1:])
+	godit := new_godit(flag.Args())
 	godit.resize()
 	godit.draw()
 	termbox.SetCursor(godit.cursor_position())

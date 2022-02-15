@@ -2,13 +2,14 @@ package main
 
 import (
 	"bytes"
-	"github.com/nsf/tulib"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/nsf/tulib"
 )
 
 var invisible_rune_table = []rune{
@@ -75,7 +76,7 @@ func rune_width(r rune) int {
 func rune_advance_len(r rune, pos int) int {
 	switch {
 	case r == '\t':
-		return tabstop_length - pos%tabstop_length
+		return opt.tabstop_length - pos%opt.tabstop_length
 	case r < 32:
 		// for invisible chars like ^R ^@ and such, two cells
 		return 2
